@@ -7,6 +7,8 @@ import TwoColumnLayout from '../common/TwoColumnLayout';
 import { getImageEditingPrompt } from '../../services/promptManager';
 import { handleApiError } from '../../services/errorHandler';
 import { generateImageWithImagen, editOrComposeWithImagen } from '../../services/imagenV3Service';
+import { incrementImageUsage } from '../../services/userService';
+import { type User } from '../../types';
 
 interface ImageData extends MultimodalContent {
   id: string;
@@ -49,11 +51,13 @@ interface ImageGenerationViewProps {
   clearReEdit: () => void;
   presetPrompt: string | null;
   clearPresetPrompt: () => void;
+  currentUser: User;
+  onUserUpdate: (user: User) => void;
 }
 
 const SESSION_KEY = 'imageGenerationState';
 
-const ImageGenerationView: React.FC<ImageGenerationViewProps> = ({ onCreateVideo, onReEdit, imageToReEdit, clearReEdit, presetPrompt, clearPresetPrompt }) => {
+const ImageGenerationView: React.FC<ImageGenerationViewProps> = ({ onCreateVideo, onReEdit, imageToReEdit, clearReEdit, presetPrompt, clearPresetPrompt, currentUser, onUserUpdate }) => {
   const [prompt, setPrompt] = useState('');
   const [images, setImages] = useState<ImageSlot[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -187,6 +191,11 @@ const ImageGenerationView: React.FC<ImageGenerationViewProps> = ({ onCreateVideo
               result: resultImage
           });
 
+          const updateResult = await incrementImageUsage(currentUser.id);
+          if (updateResult.success && updateResult.user) {
+              onUserUpdate(updateResult.user);
+          }
+
           setImages(prev => {
               const newImages = [...prev];
               newImages[index] = resultImage!;
@@ -201,7 +210,7 @@ const ImageGenerationView: React.FC<ImageGenerationViewProps> = ({ onCreateVideo
               return newImages;
           });
       }
-  }, [prompt, referenceImages, isEditing, negativePrompt, aspectRatio]);
+  }, [prompt, referenceImages, isEditing, negativePrompt, aspectRatio, currentUser.id, onUserUpdate]);
 
   const handleGenerate = useCallback(async () => {
     if (!prompt.trim() && !isEditing) {

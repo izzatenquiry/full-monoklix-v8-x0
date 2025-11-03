@@ -7,7 +7,7 @@ import { StarIcon, DownloadIcon, ImageIcon, VideoIcon, WandIcon, AlertTriangleIc
 import { getProductReviewImagePrompt, getProductReviewStoryboardPrompt, getImageEditingPrompt } from '../../services/promptManager';
 import { type User } from '../../types';
 import { MODELS, TRIAL_USAGE_LIMIT } from '../../services/aiConfig';
-import { incrementStoryboardUsage, incrementVideoUsage } from '../../services/userService';
+import { incrementStoryboardUsage, incrementVideoUsage, incrementImageUsage } from '../../services/userService';
 import { addLogEntry } from '../../services/aiLogService';
 import { triggerUserWebhook } from '../../services/webhookService';
 import PreviewModal from '../common/PreviewModal';
@@ -366,6 +366,11 @@ const ProductReviewView: React.FC<ProductReviewViewProps> = ({ onReEdit, onCreat
         
         await addHistoryItem({ type: 'Image', prompt: `Storyboard Scene ${index + 1}: ${parsedScenes[index].substring(0, 50)}...`, result: imageBase64 });
 
+        const updateResult = await incrementImageUsage(currentUser.id);
+        if (updateResult.success && updateResult.user) {
+            onUserUpdate(updateResult.user);
+        }
+
         setGeneratedImages(prev => {
             const newImages = [...prev];
             newImages[index] = imageBase64;
@@ -422,6 +427,11 @@ const ProductReviewView: React.FC<ProductReviewViewProps> = ({ onReEdit, onCreat
         }
         
         await addHistoryItem({ type: 'Image', prompt: `Edited Storyboard Scene ${index + 1}: ${editPrompt}`, result: imageBase64 });
+
+        const updateResult = await incrementImageUsage(currentUser.id);
+        if (updateResult.success && updateResult.user) {
+            onUserUpdate(updateResult.user);
+        }
 
         setGeneratedImages(prev => {
             const newImages = [...prev];

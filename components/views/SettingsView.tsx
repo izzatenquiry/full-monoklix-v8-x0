@@ -409,10 +409,7 @@ const ApiIntegrationsPanel: React.FC<ApiIntegrationsPanelProps> = ({ currentUser
             </div>
             
             <div className="border-t border-neutral-200 dark:border-neutral-800 pt-8">
-                <h2 className="text-xl font-semibold mb-2">Personal Auth Token</h2>
-                <p className="text-sm text-neutral-500 dark:text-neutral-400 my-4">
-                    You can provide your own personal auth token (`__SESSION` token from labs.google.com). This token will be prioritized for all Veo & Imagen API calls. If it fails or is empty, the system will fall back to the shared tokens. This token is stored in your account and can expire.
-                </p>
+                <h2 className="text-xl font-semibold mb-2">MONOklix Auth Token</h2>
                 <div className="relative">
                     <input
                         type={showPersonalToken ? 'text' : 'password'}
@@ -453,7 +450,7 @@ const ApiIntegrationsPanel: React.FC<ApiIntegrationsPanelProps> = ({ currentUser
                     </button>
                     <button onClick={handleTestToken} disabled={!personalAuthToken || testStatus === 'testing'} className="bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 flex justify-center items-center gap-2 disabled:opacity-50">
                          {testStatus === 'testing' ? <Spinner /> : <SparklesIcon className="w-4 h-4" />}
-                        Test Token
+                        Run Test
                     </button>
                     <button onClick={handleClearPersonalToken} disabled={personalTokenSaveStatus === 'saving'} className="bg-neutral-200 dark:bg-neutral-700 font-semibold py-2 px-4 rounded-lg hover:bg-neutral-300">
                         Clear

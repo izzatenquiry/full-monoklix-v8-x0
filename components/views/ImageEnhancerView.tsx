@@ -8,6 +8,8 @@ import TwoColumnLayout from '../common/TwoColumnLayout';
 import { getImageEnhancementPrompt } from '../../services/promptManager';
 import { handleApiError } from '../../services/errorHandler';
 import { editOrComposeWithImagen } from '../../services/imagenV3Service';
+import { incrementImageUsage } from '../../services/userService';
+import { type User } from '../../types';
 
 
 interface ImageData extends MultimodalContent {
@@ -38,11 +40,13 @@ interface ImageEditPreset {
 interface ImageEnhancerViewProps {
   onReEdit: (preset: ImageEditPreset) => void;
   onCreateVideo: (preset: VideoGenPreset) => void;
+  currentUser: User;
+  onUserUpdate: (user: User) => void;
 }
 
 const SESSION_KEY = 'imageEnhancerState';
 
-const ImageEnhancerView: React.FC<ImageEnhancerViewProps> = ({ onReEdit, onCreateVideo }) => {
+const ImageEnhancerView: React.FC<ImageEnhancerViewProps> = ({ onReEdit, onCreateVideo, currentUser, onUserUpdate }) => {
   const [imageData, setImageData] = useState<ImageData | null>(null);
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -109,6 +113,11 @@ const ImageEnhancerView: React.FC<ImageEnhancerViewProps> = ({ onReEdit, onCreat
             prompt: historyPrompt,
             result: imageBase64,
         });
+
+        const updateResult = await incrementImageUsage(currentUser.id);
+        if (updateResult.success && updateResult.user) {
+            onUserUpdate(updateResult.user);
+        }
       } else {
         setError("The AI could not enhance the image. Please try a different image.");
       }
@@ -118,7 +127,7 @@ const ImageEnhancerView: React.FC<ImageEnhancerViewProps> = ({ onReEdit, onCreat
     } finally {
       setIsLoading(false);
     }
-  }, [imageData, enhancementType]);
+  }, [imageData, enhancementType, currentUser.id, onUserUpdate]);
 
   const handleReset = useCallback(() => {
     setImageData(null);

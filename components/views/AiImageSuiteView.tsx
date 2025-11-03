@@ -5,8 +5,8 @@ import BackgroundRemoverView from './BackgroundRemoverView';
 import ProductPhotoView from './ProductPhotoView';
 import TiktokAffiliateView from './TiktokAffiliateView';
 import Tabs, { type Tab } from '../common/Tabs';
-// FIX: Import Language type.
-import { type Language } from '../../types';
+// FIX: Import Language and User types.
+import { type Language, type User } from '../../types';
 
 type TabId = 'generation' | 'enhancer' | 'remover' | 'product' | 'model';
 
@@ -27,11 +27,12 @@ interface AiImageSuiteViewProps {
   clearReEdit: () => void;
   presetPrompt: string | null;
   clearPresetPrompt: () => void;
-  // FIX: Add language to props interface.
+  currentUser: User;
+  onUserUpdate: (user: User) => void;
   language: Language;
 }
 
-const AiImageSuiteView: React.FC<AiImageSuiteViewProps> = ({ onCreateVideo, onReEdit, imageToReEdit, clearReEdit, presetPrompt, clearPresetPrompt, language }) => {
+const AiImageSuiteView: React.FC<AiImageSuiteViewProps> = ({ onCreateVideo, onReEdit, imageToReEdit, clearReEdit, presetPrompt, clearPresetPrompt, currentUser, onUserUpdate, language }) => {
     const [activeTab, setActiveTab] = useState<TabId>('generation');
 
     const tabs: Tab<TabId>[] = [
@@ -55,7 +56,7 @@ const AiImageSuiteView: React.FC<AiImageSuiteViewProps> = ({ onCreateVideo, onRe
     }, [presetPrompt]);
 
     const renderActiveTabContent = () => {
-        const commonProps = { onReEdit, onCreateVideo };
+        const commonProps = { onReEdit, onCreateVideo, currentUser, onUserUpdate };
         switch (activeTab) {
             case 'generation':
                 return <ImageGenerationView 
@@ -70,10 +71,8 @@ const AiImageSuiteView: React.FC<AiImageSuiteViewProps> = ({ onCreateVideo, onRe
             case 'remover':
                 return <BackgroundRemoverView {...commonProps} />;
             case 'product':
-                // FIX: Pass language prop to ProductPhotoView.
                 return <ProductPhotoView {...commonProps} language={language} />;
             case 'model':
-                // FIX: Pass language prop to TiktokAffiliateView.
                 return <TiktokAffiliateView {...commonProps} language={language} />;
             default:
                 return <ImageGenerationView 

@@ -8,6 +8,8 @@ import { DownloadIcon, ScissorsIcon, WandIcon, VideoIcon } from '../Icons';
 import TwoColumnLayout from '../common/TwoColumnLayout';
 import { getBackgroundRemovalPrompt } from '../../services/promptManager';
 import { handleApiError } from '../../services/errorHandler';
+import { incrementImageUsage } from '../../services/userService';
+import { type User } from '../../types';
 
 
 interface ImageData extends MultimodalContent {
@@ -36,11 +38,13 @@ interface ImageEditPreset {
 interface BackgroundRemoverViewProps {
   onReEdit: (preset: ImageEditPreset) => void;
   onCreateVideo: (preset: VideoGenPreset) => void;
+  currentUser: User;
+  onUserUpdate: (user: User) => void;
 }
 
 const SESSION_KEY = 'backgroundRemoverState';
 
-const BackgroundRemoverView: React.FC<BackgroundRemoverViewProps> = ({ onReEdit, onCreateVideo }) => {
+const BackgroundRemoverView: React.FC<BackgroundRemoverViewProps> = ({ onReEdit, onCreateVideo, currentUser, onUserUpdate }) => {
   const [imageData, setImageData] = useState<ImageData | null>(null);
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -99,6 +103,11 @@ const BackgroundRemoverView: React.FC<BackgroundRemoverViewProps> = ({ onReEdit,
             prompt: 'Background Removed',
             result: imageBase64,
         });
+
+        const updateResult = await incrementImageUsage(currentUser.id);
+        if (updateResult.success && updateResult.user) {
+            onUserUpdate(updateResult.user);
+        }
       } else {
         setError("The AI could not remove the background. Please try a different image.");
       }
@@ -108,7 +117,7 @@ const BackgroundRemoverView: React.FC<BackgroundRemoverViewProps> = ({ onReEdit,
     } finally {
       setIsLoading(false);
     }
-  }, [imageData]);
+  }, [imageData, currentUser.id, onUserUpdate]);
 
   const handleReset = useCallback(() => {
     setImageData(null);

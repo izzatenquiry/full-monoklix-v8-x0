@@ -480,7 +480,8 @@ const App: React.FC = () => {
                   clearReEdit={() => setImageToReEdit(null)}
                   presetPrompt={imageGenPresetPrompt}
                   clearPresetPrompt={() => setImageGenPresetPrompt(null)}
-                  // FIX: Pass language prop to AiImageSuiteView.
+                  currentUser={currentUser!}
+                  onUserUpdate={handleUserUpdate}
                   language={language}
                 />;
       case 'ai-video-suite':
