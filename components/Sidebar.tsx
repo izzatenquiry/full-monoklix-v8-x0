@@ -50,6 +50,22 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onLogout, 
     const isTrialAndUsedUp = currentUser.status === 'trial' && (currentUser.storyboardUsageCount || 0) >= TRIAL_USAGE_LIMIT;
     const isDisabled = item.id === 'ai-video-suite' && isTrialAndUsedUp;
 
+    if (item.id === 'support-group' && item.url) {
+        return (
+            <li key={item.id}>
+                <a
+                  href={item.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg transition-colors duration-200 text-left text-sm font-semibold bg-green-500 text-white hover:bg-green-600 shadow-md"
+                >
+                  <item.icon className="w-5 h-5" />
+                  <span>{item.label}</span>
+                </a>
+            </li>
+        );
+    }
+
     if (item.isSpecial) {
         return (
             <button 
