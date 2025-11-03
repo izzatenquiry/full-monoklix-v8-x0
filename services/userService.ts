@@ -374,15 +374,23 @@ export const saveUserPersonalAuthToken = async (
 export const assignPersonalTokenAndIncrementUsage = async (userId: string, token: string): Promise<{ success: true, user: User } | { success: false, message: string }> => {
     try {
         // Step 1: Increment the token usage count
-        const { data: tokenData, error: fetchError } = await supabase
+        // FIX: Replaced .single() with an array check to prevent "406 Not Acceptable" errors
+        // when a token is not found, which leads to a "Cannot coerce" error.
+        const { data: tokenDataArray, error: fetchError } = await supabase
             .from('auth_token')
             .select('total_user')
             .eq('token', token)
-            .single();
+            .limit(1);
 
-        if (fetchError) throw new Error(`Could not find token to increment: ${fetchError.message}`);
+        if (fetchError) {
+            throw new Error(`Database error while fetching token: ${fetchError.message}`);
+        }
+        if (!tokenDataArray || tokenDataArray.length === 0) {
+            // This is the specific error that was happening: token not found in DB.
+            throw new Error(`Could not find the specified token in the database to update its usage count.`);
+        }
+        const tokenData = tokenDataArray[0];
 
-        // FIX: Explicitly convert the current count to a number to prevent string concatenation.
         const currentCount = Number(tokenData.total_user || 0);
         const { error: incrementError } = await supabase
             .from('auth_token')
