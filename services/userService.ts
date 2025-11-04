@@ -367,39 +367,36 @@ export const saveUserPersonalAuthToken = async (
 
 /**
  * Assigns a personal auth token to a user and increments the usage count for that token.
+ * This version uses a database function (RPC) to perform an atomic check-and-increment,
+ * which is the robust solution to prevent race conditions.
  * @param userId The ID of the user.
  * @param token The token string to assign.
  * @returns The updated user object on success.
  */
 export const assignPersonalTokenAndIncrementUsage = async (userId: string, token: string): Promise<{ success: true, user: User } | { success: false, message: string }> => {
     try {
-        // Step 1: Increment the token usage count
-        // FIX: Replaced .single() with an array check to prevent "406 Not Acceptable" errors
-        // when a token is not found, which leads to a "Cannot coerce" error.
-        const { data: tokenDataArray, error: fetchError } = await supabase
-            .from('auth_token')
-            .select('total_user')
-            .eq('token', token)
-            .limit(1);
+        // Step 1: Atomically increment the token count using a database function (RPC).
+        // This function should be defined in Supabase to only succeed if the current 'total_user' is less than 5.
+        // It returns `true` on success, `false` otherwise.
+        const { data: rpcSuccess, error: rpcError } = await supabase.rpc(
+            'increment_token_if_available', 
+            { token_to_check: token }
+        );
 
-        if (fetchError) {
-            throw new Error(`Database error while fetching token: ${fetchError.message}`);
+        if (rpcError) {
+            // This could happen if the RPC function doesn't exist.
+            // For now, we'll treat it as a generic database error.
+            throw new Error(`Database function error: ${rpcError.message}. Ensure 'increment_token_if_available' function exists in Supabase.`);
         }
-        if (!tokenDataArray || tokenDataArray.length === 0) {
-            // This is the specific error that was happening: token not found in DB.
-            throw new Error(`Could not find the specified token in the database to update its usage count.`);
+        
+        // The RPC function returns true if the increment was successful, false or null otherwise.
+        if (rpcSuccess !== true) {
+            // This is not an error, but a normal race condition outcome. The slot was taken.
+            console.log(`Token slot for ...${token.slice(-6)} was taken by another user. Trying next token.`);
+            throw new Error(`Token usage limit reached by the time of assignment. Trying next token.`);
         }
-        const tokenData = tokenDataArray[0];
 
-        const currentCount = Number(tokenData.total_user || 0);
-        const { error: incrementError } = await supabase
-            .from('auth_token')
-            .update({ total_user: currentCount + 1 })
-            .eq('token', token);
-
-        if (incrementError) throw new Error(`Could not increment token usage: ${incrementError.message}`);
-
-        // Step 2: Assign the token to the user
+        // Step 2: If the increment was successful, assign the token to the user.
         const { data: updatedUserData, error: userUpdateError } = await supabase
             .from('users')
             .update({ personal_auth_token: token })
@@ -408,6 +405,8 @@ export const assignPersonalTokenAndIncrementUsage = async (userId: string, token
             .single();
         
         if (userUpdateError) {
+             // This is a critical state. The token count was incremented, but user assignment failed.
+             // This requires manual intervention.
              console.error("CRITICAL: Failed to assign token to user AFTER incrementing count. Manual DB correction may be needed for token:", token);
              
              const message = getErrorMessage(userUpdateError);
@@ -430,10 +429,9 @@ export const assignPersonalTokenAndIncrementUsage = async (userId: string, token
         const message = getErrorMessage(error);
         console.error("Failed to assign token and increment usage:", message);
         
-        if (message.includes("column") && message.includes("does not exist")) {
-            if (message.includes('personal_auth_token')) {
-                return { success: false, message: 'DB_SCHEMA_MISSING_COLUMN_personal_auth_token' };
-            }
+        // Propagate specific schema error for UI handling
+        if (message.includes('DB_SCHEMA_MISSING_COLUMN_personal_auth_token')) {
+            return { success: false, message: 'DB_SCHEMA_MISSING_COLUMN_personal_auth_token' };
         }
         
         return { success: false, message };

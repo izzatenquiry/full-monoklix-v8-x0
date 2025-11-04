@@ -1,6 +1,6 @@
 import React from 'react';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { getAllUsers, updateUserStatus, replaceUsers, exportAllUserData, forceUserLogout, updateUserSubscription } from '../../services/userService';
+import { getAllUsers, updateUserStatus, replaceUsers, exportAllUserData, forceUserLogout, updateUserSubscription, saveUserPersonalAuthToken } from '../../services/userService';
 import { type User, type UserStatus } from '../../types';
 import { UsersIcon, XIcon, DownloadIcon, UploadIcon, CheckCircleIcon, AlertTriangleIcon, VideoIcon } from '../Icons';
 import Spinner from '../common/Spinner';
@@ -85,7 +85,8 @@ const AdminDashboardView: React.FC = () => {
     const [selectedUser, setSelectedUser] = useState<User | null>(null);
     const [newStatus, setNewStatus] = useState<UserStatus>('trial');
     const [subscriptionDuration, setSubscriptionDuration] = useState<6 | 12>(6);
-    const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+    const [personalToken, setPersonalToken] = useState<string>('');
+    const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'loading'; message: string } | null>(null);
     const [isHealthModalOpen, setIsHealthModalOpen] = useState(false);
     const [userForHealthCheck, setUserForHealthCheck] = useState<User | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -109,6 +110,7 @@ const AdminDashboardView: React.FC = () => {
     const openEditModal = (user: User) => {
         setSelectedUser(user);
         setNewStatus(user.status);
+        setPersonalToken(user.personalAuthToken || '');
         setIsModalOpen(true);
     };
 
@@ -117,38 +119,65 @@ const AdminDashboardView: React.FC = () => {
         return users.filter(u => u.status === 'lifetime' || u.status === 'subscription').length;
     }, [users]);
 
-    const handleSaveStatus = async () => {
+    const handleSaveChanges = async () => {
         if (!selectedUser) return;
+        setStatusMessage({ type: 'loading', message: 'Saving changes...' });
 
-        const isUpgradingToVeo = (newStatus === 'lifetime' || newStatus === 'subscription') &&
+        // Status update logic with VEO check
+        const statusPromise = new Promise<{ success: boolean, message?: string }>(async (resolve) => {
+            const isUpgradingToVeo = (newStatus === 'lifetime' || newStatus === 'subscription') &&
                                     (selectedUser.status !== 'lifetime' && selectedUser.status !== 'subscription');
 
-        if (isUpgradingToVeo) {
-            if (veoAuthorizedUsersCount >= 4) { // Limit is "less than 5", so max 4.
-                setStatusMessage({ type: 'error', message: 'Cannot add user. Veo 3.0 authorization is limited to less than 5 users.' });
-                setIsModalOpen(false);
-                setSelectedUser(null);
-                setTimeout(() => setStatusMessage(null), 5000);
-                return;
+            if (isUpgradingToVeo && veoAuthorizedUsersCount >= 4) {
+                return resolve({ success: false, message: 'Cannot add user. Veo 3.0 authorization is limited to less than 5 users.' });
             }
+            if (newStatus === selectedUser.status) return resolve({ success: true });
+            
+            let success = false;
+            if (newStatus === 'subscription') {
+                success = await updateUserSubscription(selectedUser.id, subscriptionDuration);
+            } else {
+                success = await updateUserStatus(selectedUser.id, newStatus);
+            }
+            resolve({ success });
+        });
+
+        // Token update logic
+        const tokenPromise = new Promise<{ success: boolean; message?: string }>(async (resolve) => {
+            const currentToken = selectedUser.personalAuthToken || '';
+            const newToken = personalToken.trim();
+            if (newToken === currentToken) return resolve({ success: true });
+
+            const result = await saveUserPersonalAuthToken(selectedUser.id, newToken || null);
+            // FIX: Inverted conditional to check for the failure case first. This helps ensure TypeScript
+            // correctly narrows the discriminated union type for both the success and failure blocks.
+            if (result.success === false) {
+                resolve({ success: false, message: result.message });
+            } else {
+                resolve({ success: true });
+            }
+        });
+
+        const [statusResult, tokenResult] = await Promise.all([statusPromise, tokenPromise]);
+
+        const errorMessages = [];
+        if (!statusResult.success) {
+            errorMessages.push(statusResult.message || 'Failed to update status.');
         }
-        
-        let success = false;
-        if (newStatus === 'subscription') {
-            success = await updateUserSubscription(selectedUser.id, subscriptionDuration);
-        } else {
-            success = await updateUserStatus(selectedUser.id, newStatus);
+        if (!tokenResult.success) {
+            errorMessages.push(tokenResult.message || 'Failed to update token.');
         }
 
-        if (success) {
-            fetchUsers();
-            setStatusMessage({ type: 'success', message: `Status for ${selectedUser.username} has been updated.` });
+        if (errorMessages.length > 0) {
+            setStatusMessage({ type: 'error', message: errorMessages.join(' ') });
         } else {
-            setStatusMessage({ type: 'error', message: 'Failed to update status.' });
+            setStatusMessage({ type: 'success', message: `User ${selectedUser.username} updated successfully.` });
+            fetchUsers();
         }
+
         setIsModalOpen(false);
         setSelectedUser(null);
-        setTimeout(() => setStatusMessage(null), 4000);
+        setTimeout(() => setStatusMessage(null), 5000);
     };
     
     const handleForceLogout = () => {
@@ -327,7 +356,7 @@ const AdminDashboardView: React.FC = () => {
                 </div>
 
                  {statusMessage && (
-                    <div className={`p-3 rounded-md mb-4 text-sm ${statusMessage.type === 'success' ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200' : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200'}`}>
+                    <div className={`p-3 rounded-md mb-4 text-sm ${statusMessage.type === 'loading' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200' : statusMessage.type === 'success' ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200' : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200'}`}>
                         {statusMessage.message}
                     </div>
                 )}
@@ -352,6 +381,9 @@ const AdminDashboardView: React.FC = () => {
                                     </th>
                                     <th scope="col" className="px-6 py-3">
                                         Images Generated
+                                    </th>
+                                    <th scope="col" className="px-6 py-3">
+                                        Personal Auth Token
                                     </th>
                                     <th scope="col" className="px-6 py-3">
                                         Account Status
@@ -408,6 +440,9 @@ const AdminDashboardView: React.FC = () => {
                                                 <td className="px-6 py-4 font-medium text-center text-neutral-800 dark:text-neutral-200">
                                                     {user.totalImage ?? 0}
                                                 </td>
+                                                <td className="px-6 py-4 font-mono text-xs text-neutral-500 dark:text-neutral-400">
+                                                    {user.personalAuthToken ? `...${user.personalAuthToken.slice(-6)}` : '-'}
+                                                </td>
                                                 <td className="px-6 py-4">
                                                     <div>
                                                         <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusColors[color]}`}>
@@ -443,7 +478,7 @@ const AdminDashboardView: React.FC = () => {
                                     })
                                 ) : (
                                     <tr>
-                                        <td colSpan={9} className="text-center py-10">
+                                        <td colSpan={10} className="text-center py-10">
                                             {users.length > 0 ? (
                                                 <div>
                                                     <p className="mt-2 font-semibold">No users found.</p>
@@ -469,12 +504,12 @@ const AdminDashboardView: React.FC = () => {
                 <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" aria-modal="true" role="dialog">
                     <div className="bg-white dark:bg-neutral-800 rounded-lg shadow-xl p-6 w-full max-w-md m-4">
                         <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-lg font-bold">Edit User Status</h3>
+                            <h3 className="text-lg font-bold">Edit User</h3>
                             <button onClick={() => setIsModalOpen(false)} className="p-1 rounded-full hover:bg-neutral-200 dark:hover:bg-neutral-700">
                                 <XIcon className="w-5 h-5" />
                             </button>
                         </div>
-                        <p className="mb-4 text-sm">Updating status for <span className="font-semibold">{selectedUser.username}</span>.</p>
+                        <p className="mb-4 text-sm">Updating profile for <span className="font-semibold">{selectedUser.username}</span>.</p>
                         <div className="space-y-4">
                             <div>
                                 <label htmlFor="status-select" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
@@ -491,6 +526,19 @@ const AdminDashboardView: React.FC = () => {
                                     <option value="lifetime">Lifetime</option>
                                     <option value="inactive">Inactive</option>
                                 </select>
+                            </div>
+                             <div>
+                                <label htmlFor="token-input" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                                    Personal Auth Token
+                                </label>
+                                <input
+                                    id="token-input"
+                                    type="text"
+                                    value={personalToken}
+                                    onChange={(e) => setPersonalToken(e.target.value)}
+                                    placeholder="User's __SESSION token"
+                                    className="w-full bg-neutral-50 dark:bg-neutral-700 border border-neutral-300 dark:border-neutral-600 rounded-lg p-2 focus:ring-2 focus:ring-primary-500 focus:outline-none font-mono text-xs"
+                                />
                             </div>
                             {newStatus === 'subscription' && (
                                 <div className="mt-4 p-3 bg-neutral-100 dark:bg-neutral-700/50 rounded-md">
@@ -526,10 +574,10 @@ const AdminDashboardView: React.FC = () => {
                                     Cancel
                                 </button>
                                 <button
-                                    onClick={handleSaveStatus}
+                                    onClick={handleSaveChanges}
                                     className="px-4 py-2 text-sm font-semibold text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors"
                                 >
-                                    Update Status
+                                    Save Changes
                                 </button>
                             </div>
                         </div>
