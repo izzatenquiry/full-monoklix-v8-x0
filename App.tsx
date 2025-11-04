@@ -379,19 +379,22 @@ const App: React.FC = () => {
                         
                         const assignResult = await assignPersonalTokenAndIncrementUsage(currentUser.id, tokenData.token);
 
-                        // FIX: Explicitly check for `success === false` to ensure correct type narrowing for the discriminated union.
+// FIX: Inverted conditional to correctly narrow discriminated union type for `assignResult`. This resolves TypeScript errors where `assignResult.message` was not being correctly identified in the `else` block.
                         if (assignResult.success === false) {
-                            console.error('[Auto-Assign] Failed to assign token or increment usage:', assignResult.message);
+                            // Log the failure but continue the loop to try the next available token.
+                            console.warn(`[Auto-Assign] Could not assign token ...${tokenData.token.slice(-6)}: ${assignResult.message}. Trying next.`);
+                            // Handle fatal schema error
                             if (assignResult.message === 'DB_SCHEMA_MISSING_COLUMN_personal_auth_token' && currentUser.role === 'admin') {
                                 alert("Database schema is outdated.\n\nPlease go to your Supabase dashboard and run the following SQL command to add the required column:\n\nALTER TABLE public.users ADD COLUMN personal_auth_token TEXT;");
+                                // This is a fatal schema error, so we stop trying.
+                                break;
                             }
                         } else {
                             handleUserUpdate(assignResult.user);
                             console.log('[Auto-Assign] Successfully assigned personal token and incremented usage count.');
+                            // Stop after finding and successfully assigning a valid token
+                            return; 
                         }
-                        
-                        // Stop after finding the first valid token
-                        return; 
                     }
                 }
 

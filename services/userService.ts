@@ -376,24 +376,20 @@ export const saveUserPersonalAuthToken = async (
 export const assignPersonalTokenAndIncrementUsage = async (userId: string, token: string): Promise<{ success: true, user: User } | { success: false, message: string }> => {
     try {
         // Step 1: Atomically increment the token count using a database function (RPC).
-        // This function should be defined in Supabase to only succeed if the current 'total_user' is less than 5.
-        // It returns `true` on success, `false` otherwise.
         const { data: rpcSuccess, error: rpcError } = await supabase.rpc(
             'increment_token_if_available', 
             { token_to_check: token }
         );
 
         if (rpcError) {
-            // This could happen if the RPC function doesn't exist.
-            // For now, we'll treat it as a generic database error.
             throw new Error(`Database function error: ${rpcError.message}. Ensure 'increment_token_if_available' function exists in Supabase.`);
         }
         
-        // The RPC function returns true if the increment was successful, false or null otherwise.
         if (rpcSuccess !== true) {
             // This is not an error, but a normal race condition outcome. The slot was taken.
+            const message = `Token usage limit reached by the time of assignment. Trying next token.`;
             console.log(`Token slot for ...${token.slice(-6)} was taken by another user. Trying next token.`);
-            throw new Error(`Token usage limit reached by the time of assignment. Trying next token.`);
+            return { success: false, message: message };
         }
 
         // Step 2: If the increment was successful, assign the token to the user.
@@ -405,8 +401,6 @@ export const assignPersonalTokenAndIncrementUsage = async (userId: string, token
             .single();
         
         if (userUpdateError) {
-             // This is a critical state. The token count was incremented, but user assignment failed.
-             // This requires manual intervention.
              console.error("CRITICAL: Failed to assign token to user AFTER incrementing count. Manual DB correction may be needed for token:", token);
              
              const message = getErrorMessage(userUpdateError);
@@ -429,7 +423,6 @@ export const assignPersonalTokenAndIncrementUsage = async (userId: string, token
         const message = getErrorMessage(error);
         console.error("Failed to assign token and increment usage:", message);
         
-        // Propagate specific schema error for UI handling
         if (message.includes('DB_SCHEMA_MISSING_COLUMN_personal_auth_token')) {
             return { success: false, message: 'DB_SCHEMA_MISSING_COLUMN_personal_auth_token' };
         }
@@ -525,7 +518,7 @@ export const getVeoAuthTokens = async (): Promise<{ token: string; createdAt: st
     const { data, error } = await supabase
         .from('auth_token')
         .select('token, created_at')
-        .lt('total_user', 5) // Only fetch tokens with less than 5 users.
+        .lt('total_user', 10) // Only fetch tokens with less than 10 users.
         .order('created_at', { ascending: false })
         .limit(10);
 
