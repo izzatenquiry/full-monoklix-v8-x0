@@ -78,6 +78,18 @@ const NotificationBanner: React.FC<{ message: string; onDismiss: () => void }> =
     </div>
 );
 
+const AssigningTokenModal: React.FC = () => (
+  <div className="fixed inset-0 bg-black/70 flex flex-col items-center justify-center z-50 p-4 animate-zoomIn" aria-modal="true" role="dialog">
+    <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl p-8 text-center max-w-sm w-full">
+      <Spinner />
+      <h2 className="text-xl font-bold mt-4 text-neutral-800 dark:text-neutral-100">Preparing Your Account</h2>
+      <p className="text-neutral-500 dark:text-neutral-400 mt-2 text-sm">
+        We're assigning a secure token for your first session. This may take a moment, please wait.
+      </p>
+    </div>
+  </div>
+);
+
 const App: React.FC = () => {
   const [sessionChecked, setSessionChecked] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -210,7 +222,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const handlePersonalTokenFailure = async () => {
       if (currentUser && currentUser.personalAuthToken) {
-        setNotification('Your personal auth token has failed and has been automatically cleared. The system has fallen back to a shared token.');
+        setNotification('Sambungan akaun anda telah dikemas kini secara automatik.');
         
         // Clear the bad token from the user's profile
         const result = await saveUserPersonalAuthToken(currentUser.id, null);
@@ -646,6 +658,7 @@ To unlock this and all other advanced features, please upgrade to the full versi
 
   return (
     <div className="flex h-screen bg-neutral-100 dark:bg-neutral-900 text-neutral-800 dark:text-neutral-100 font-sans">
+      {isAutoAssigningToken && <AssigningTokenModal />}
       <Sidebar 
         activeView={activeView} 
         setActiveView={setActiveView} 
